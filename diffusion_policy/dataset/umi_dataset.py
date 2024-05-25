@@ -40,8 +40,8 @@ class UmiDataset(BaseDataset):
         max_duration: Optional[float]=None
     ):
         self.pose_repr = pose_repr
-        self.obs_pose_repr = self.pose_repr.get('obs_pose_repr', 'rel')
-        self.action_pose_repr = self.pose_repr.get('action_pose_repr', 'rel')
+        self.obs_pose_repr = self.pose_repr.get('obs_pose_repr', 'relative')
+        self.action_pose_repr = self.pose_repr.get('action_pose_repr', 'relative')
         
         if cache_dir is None:
             # load into memory store
@@ -88,7 +88,6 @@ class UmiDataset(BaseDataset):
                 group=zarr.group(store)
             )
         
-        self.num_robot = 0
         rgb_keys = list()
         lowdim_keys = list()
         key_horizon = dict()
@@ -103,8 +102,6 @@ class UmiDataset(BaseDataset):
             elif type == 'low_dim':
                 lowdim_keys.append(key)
 
-            if key.endswith('eef_pos'):
-                self.num_robot += 1
 
             # solve obs_horizon
             horizon = shape_meta['obs'][key]['horizon']
@@ -138,7 +135,7 @@ class UmiDataset(BaseDataset):
         for key in replay_buffer.keys():
             if key.endswith('_demo_start_pose') or key.endswith('_demo_end_pose'):
                 self.sampler_lowdim_keys.append(key)
-                query_key = key.split('_')[0] + '_eef_pos'
+                query_key = 'arm_pos'
                 key_horizon[key] = shape_meta['obs'][query_key]['horizon']
                 key_latency_steps[key] = shape_meta['obs'][query_key]['latency_steps']
                 key_down_sample_steps[key] = shape_meta['obs'][query_key]['down_sample_steps']
@@ -219,10 +216,9 @@ class UmiDataset(BaseDataset):
         assert data_cache['action'].shape[-1] % self.num_robot == 0
         dim_a = data_cache['action'].shape[-1] // self.num_robot
         action_normalizers = list()
-        for i in range(self.num_robot):
-            action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., i * dim_a: i * dim_a + 3])))              # pos
-            action_normalizers.append(get_identity_normalizer_from_stat(array_to_stats(data_cache['action'][..., i * dim_a + 3: (i + 1) * dim_a - 1]))) # rot
-            action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., (i + 1) * dim_a - 1: (i + 1) * dim_a])))  # gripper
+        action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., i * dim_a: i * dim_a + 3])))              # pos
+        action_normalizers.append(get_identity_normalizer_from_stat(array_to_stats(data_cache['action'][..., i * dim_a + 3: (i + 1) * dim_a - 1]))) # rot
+        action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., (i + 1) * dim_a - 1: (i + 1) * dim_a])))  # gripper
 
         normalizer['action'] = concatenate_normalizer(action_normalizers)
 

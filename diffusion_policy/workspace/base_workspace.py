@@ -17,7 +17,10 @@ class BaseWorkspace:
     def __init__(self, cfg: OmegaConf, output_dir: Optional[str]=None):
         self.cfg = cfg
         self._output_dir = output_dir
+        if cfg.training.output_dir != "None":
+            self._output_dir = cfg.training.output_dir
         self._saving_thread = None
+        
 
     @property
     def output_dir(self):

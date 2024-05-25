@@ -35,7 +35,7 @@ class SequenceSampler:
         episode_ends = replay_buffer.episode_ends[:]
 
         # load gripper_width
-        gripper_width = replay_buffer['robot0_gripper_width'][:, 0]
+        gripper_width = replay_buffer['gripper_pos'][:, 0]
         gripper_width_threshold = 0.08
         self.repeat_frame_prob = repeat_frame_prob
 
@@ -59,11 +59,7 @@ class SequenceSampler:
         
         # load low_dim to memory and keep rgb as compressed zarr array
         self.replay_buffer = dict()
-        self.num_robot = 0
         for key in lowdim_keys:
-            if key.endswith('eef_pos'):
-                self.num_robot += 1
-
             if key.endswith('pos_abs'):
                 axis = shape_meta['obs'][key]['axis']
                 if isinstance(axis, int):
@@ -93,14 +89,7 @@ class SequenceSampler:
         if 'action' in replay_buffer:
             self.replay_buffer['action'] = replay_buffer['action'][:]
         else:
-            # construct action (concatenation of [eef_pos, eef_rot, gripper_width])
-            actions = list()
-            for robot_idx in range(self.num_robot):
-                for cat in ['eef_pos', 'eef_rot_axis_angle', 'gripper_width']:
-                    key = f'robot{robot_idx}_{cat}'
-                    if key in self.replay_buffer:
-                        actions.append(self.replay_buffer[key])
-            self.replay_buffer['action'] = np.concatenate(actions, axis=-1)
+            raise ValueError("action key is not found in replay_buffer")            
 
         self.action_padding = action_padding
         self.indices = indices

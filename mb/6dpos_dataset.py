@@ -150,7 +150,7 @@ class SixDPosReplayDataset(BaseDataset):
         #Changes for 6d pos
         ###################
         this_normalizer = concatenate_normalizer([
-            get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., :6])),      # pos
+            get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., :6])),      # pos + pose
             get_identity_normalizer_from_stat(array_to_stats(data_cache['action'][..., 6:-1])), # rot
             get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., -1:]))      # gripper
         ])
@@ -213,8 +213,9 @@ class SixDPosReplayDataset(BaseDataset):
         current_rot_mat = copy.copy(self.rot_quat2mat.forward(obs_dict['robot0_eef_quat'][-1]))
         
         # solve relative obs
-        obs_dict['robot0_eef_pos'], obs_dict['robot0_eef_quat'] = compute_relative_pose(
-            pos=obs_dict['robot0_eef_pos'],
+        base_and_eef = np.concatenate([obs_dict['base_pose'], obs_dict['robot0_eef_pos']], axis=-1)
+        base_and_eef, obs_dict['robot0_eef_quat'] = compute_relative_pose(
+            pos=base_and_eef,
             rot=obs_dict['robot0_eef_quat'],
             base_pos=current_pos if self.obs_pose_repr == 'rel' else np.zeros(3, dtype=np.float32),
             base_rot_mat=current_rot_mat if self.obs_pose_repr == 'rel' else np.eye(3, dtype=np.float32),
@@ -227,7 +228,7 @@ class SixDPosReplayDataset(BaseDataset):
         ###################
         # solve relative action
         action_pos, action_rot = compute_relative_pose(
-            pos=data['action'][..., 6],
+            pos=data['action'][..., :6],
             rot=data['action'][..., 6:-1],
             base_pos=current_pos if self.action_pose_repr == 'rel' else np.zeros(3, dtype=np.float32),
             base_rot_mat=current_rot_mat if self.action_pose_repr == 'rel' else np.eye(3, dtype=np.float32),
