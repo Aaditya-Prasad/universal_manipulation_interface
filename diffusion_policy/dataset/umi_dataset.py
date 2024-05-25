@@ -284,7 +284,7 @@ class UmiDataset(BaseDataset):
                 ], axis=-1))
                 rel_obs_pose_mat = convert_pose_mat_rep(
                     pose_mat,
-                    base_pose_mat=other_pose_mat[-1],
+                    ref_pose_mat=other_pose_mat[-1],
                     pose_rep='relative',
                     backward=False)
                 rel_obs_pose = mat_to_pose10d(rel_obs_pose_mat)
@@ -311,7 +311,7 @@ class UmiDataset(BaseDataset):
             start_pose_mat = pose_to_mat(start_pose)
             rel_obs_pose_mat = convert_pose_mat_rep(
                 pose_mat,
-                base_pose_mat=start_pose_mat,
+                ref_pose_mat=start_pose_mat,
                 pose_rep='relative',
                 backward=False)
             
@@ -339,12 +339,12 @@ class UmiDataset(BaseDataset):
             # solve relative obs
             obs_pose_mat = convert_pose_mat_rep(
                 pose_mat, 
-                base_pose_mat=pose_mat[-1],
+                ref_pose_mat=pose_mat[-1],
                 pose_rep=self.obs_pose_repr,
                 backward=False)
             action_pose_mat = convert_pose_mat_rep(
                 action_mat, 
-                base_pose_mat=pose_mat[-1],
+                ref_pose_mat=pose_mat[-1],
                 pose_rep=self.obs_pose_repr,
                 backward=False)
         
