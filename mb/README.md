@@ -9,5 +9,17 @@ utils -> N/A, utils is new and we leave it in this folder
 policy wrapper -> N/A, policy wrapper is new and we leave it in this folder
 example.ipynb -> N/A, ...
 
-TODOs:
+### Keys:
+base_pose [T, 3]
+arm_pos [T, 3]
+arm_rot_axis_angle [T, 3]
+gripper_pos [T, 1]
+arm_demo_start_pos [T, 6] (3 dims for arm_pos, 3 dims for arm_rot_axis_angle, also T can just be the same 6 values copied T times)
+
+action [T, 10] (3 base, 3 arm, 3 aa arm, 1 gripper):
+
+will be converted to [T, 13] for policy fitting since aa -> 6d
+
+### TODOs:
 - Val loss is commented out in the workspace code, unsure why
+

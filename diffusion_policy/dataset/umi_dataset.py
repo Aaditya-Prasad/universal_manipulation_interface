@@ -213,12 +213,10 @@ class UmiDataset(BaseDataset):
                 data_cache[key] = data_cache[key].reshape(B*T, D)
 
         # action
-        assert data_cache['action'].shape[-1] % self.num_robot == 0
-        dim_a = data_cache['action'].shape[-1] // self.num_robot
         action_normalizers = list()
-        action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., i * dim_a: i * dim_a + 3])))              # pos
-        action_normalizers.append(get_identity_normalizer_from_stat(array_to_stats(data_cache['action'][..., i * dim_a + 3: (i + 1) * dim_a - 1]))) # rot
-        action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., (i + 1) * dim_a - 1: (i + 1) * dim_a])))  # gripper
+        action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][...,:6])))              # pos
+        action_normalizers.append(get_identity_normalizer_from_stat(array_to_stats(data_cache['action'][..., 6:12]))) # rot
+        action_normalizers.append(get_range_normalizer_from_stat(array_to_stats(data_cache['action'][..., 12:])))  # gripper
 
         normalizer['action'] = concatenate_normalizer(action_normalizers)
 
@@ -266,59 +264,32 @@ class UmiDataset(BaseDataset):
             obs_dict[key] = data[key].astype(np.float32)
             del data[key]
         
-        # generate relative pose between two ees
-        for robot_id in range(self.num_robot):
-            # convert pose to mat
-            pose_mat = pose_to_mat(np.concatenate([
-                obs_dict[f'robot{robot_id}_eef_pos'],
-                obs_dict[f'robot{robot_id}_eef_rot_axis_angle']
-            ], axis=-1))
-            for other_robot_id in range(self.num_robot):
-                if robot_id == other_robot_id:
-                    continue
-                if not f'robot{robot_id}_eef_pos_wrt{other_robot_id}' in self.lowdim_keys:
-                    continue
-                other_pose_mat = pose_to_mat(np.concatenate([
-                    obs_dict[f'robot{other_robot_id}_eef_pos'],
-                    obs_dict[f'robot{other_robot_id}_eef_rot_axis_angle']
-                ], axis=-1))
-                rel_obs_pose_mat = convert_pose_mat_rep(
-                    pose_mat,
-                    ref_pose_mat=other_pose_mat[-1],
-                    pose_rep='relative',
-                    backward=False)
-                rel_obs_pose = mat_to_pose10d(rel_obs_pose_mat)
-                obs_dict[f'robot{robot_id}_eef_pos_wrt{other_robot_id}'] = rel_obs_pose[:,:3]
-                obs_dict[f'robot{robot_id}_eef_rot_axis_angle_wrt{other_robot_id}'] = rel_obs_pose[:,3:]
-                
         # generate relative pose with respect to episode start
-        for robot_id in range(self.num_robot):
-            # HACK: add noise to episode start pose
-            if (f'robot{other_robot_id}_eef_pos_wrt_start' not in self.shape_meta['obs']) and \
-                (f'robot{other_robot_id}_eef_rot_axis_angle_wrt_start' not in self.shape_meta['obs']):
-                continue
-            
-            # convert pose to mat
-            pose_mat = pose_to_mat(np.concatenate([
-                obs_dict[f'robot{robot_id}_eef_pos'],
-                obs_dict[f'robot{robot_id}_eef_rot_axis_angle']
-            ], axis=-1))
-            
-            # get start pose
-            start_pose = obs_dict[f'robot{robot_id}_demo_start_pose'][0]
-            # HACK: add noise to episode start pose
-            start_pose += np.random.normal(scale=[0.05,0.05,0.05,0.05,0.05,0.05],size=start_pose.shape)
-            start_pose_mat = pose_to_mat(start_pose)
-            rel_obs_pose_mat = convert_pose_mat_rep(
-                pose_mat,
-                ref_pose_mat=start_pose_mat,
-                pose_rep='relative',
-                backward=False)
-            
-            rel_obs_pose = mat_to_pose10d(rel_obs_pose_mat)
-            # HACK: add noise to episode start pose
-            # obs_dict[f'robot{robot_id}_eef_pos_wrt_start'] = rel_obs_pose[:,:3]
-            obs_dict[f'robot{robot_id}_eef_rot_axis_angle_wrt_start'] = rel_obs_pose[:,3:]
+        # HACK: add noise to episode start pose
+        # if (f'robot{other_robot_id}_eef_pos_wrt_start' not in self.shape_meta['obs']) and \
+        #     (f'robot{other_robot_id}_eef_rot_axis_angle_wrt_start' not in self.shape_meta['obs']):
+        #     continue
+        
+        # convert pose to mat
+        pose_mat = pose_to_mat(np.concatenate([
+            obs_dict[f'arm_pos'],
+            obs_dict[f'arm_rot_axis_angle']
+        ], axis=-1))
+        
+        # get start pose
+        start_pose = obs_dict[f'arm_demo_start_pose'][0]
+        # HACK: add noise to episode start pose
+        start_pose += np.random.normal(scale=[0.05,0.05,0.05,0.05,0.05,0.05],size=start_pose.shape)
+        start_pose_mat = pose_to_mat(start_pose)
+        rel_obs_pose_mat = convert_pose_mat_rep(
+            pose_mat,
+            ref_pose_mat=start_pose_mat,
+            pose_rep='relative',
+            backward=False)
+        
+        rel_obs_pose = mat_to_pose10d(rel_obs_pose_mat)
+        # obs_dict[f'robot{robot_id}_eef_pos_wrt_start'] = rel_obs_pose[:,:3]
+        obs_dict[f'arm_rot_axis_angle_wrt_start'] = rel_obs_pose[:,3:]
 
         del_keys = list()
         for key in obs_dict:
@@ -327,39 +298,45 @@ class UmiDataset(BaseDataset):
         for key in del_keys:
             del obs_dict[key]
 
-        actions = list()
-        for robot_id in range(self.num_robot):
             # convert pose to mat
-            pose_mat = pose_to_mat(np.concatenate([
-                obs_dict[f'robot{robot_id}_eef_pos'],
-                obs_dict[f'robot{robot_id}_eef_rot_axis_angle']
-            ], axis=-1))
-            action_mat = pose_to_mat(data['action'][...,7 * robot_id: 7 * robot_id + 6])
-            
-            # solve relative obs
-            obs_pose_mat = convert_pose_mat_rep(
-                pose_mat, 
-                ref_pose_mat=pose_mat[-1],
-                pose_rep=self.obs_pose_repr,
-                backward=False)
-            action_pose_mat = convert_pose_mat_rep(
-                action_mat, 
-                ref_pose_mat=pose_mat[-1],
-                pose_rep=self.obs_pose_repr,
-                backward=False)
-        
-            # convert pose to pos + rot6d representation
-            obs_pose = mat_to_pose10d(obs_pose_mat)
-            action_pose = mat_to_pose10d(action_pose_mat)
-        
-            action_gripper = data['action'][..., 7 * robot_id + 6: 7 * robot_id + 7]
-            actions.append(np.concatenate([action_pose, action_gripper], axis=-1))
+        arm_pose_mat = pose_to_mat(np.concatenate([
+            obs_dict[f'arm_pos'],
+            obs_dict[f'arm_rot_axis_angle']
+        ], axis=-1))
+        base_pose_obs = obs_dict['base_pose']
 
-            # generate data
-            obs_dict[f'robot{robot_id}_eef_pos'] = obs_pose[:,:3]
-            obs_dict[f'robot{robot_id}_eef_rot_axis_angle'] = obs_pose[:,3:]
+        arm_action = data['action'][..., 3:9]
+        arm_action_mat = pose_to_mat(arm_action)   
+        base_action = data['action'][..., :3]
+
             
-        data['action'] = np.concatenate(actions, axis=-1)
+        # solve relative obs
+        arm_obs_pose_mat = convert_pose_mat_rep(
+            arm_pose_mat, 
+            ref_pose_mat=arm_pose_mat[-1],
+            pose_rep=self.action_pose_repr,
+            backward=False)
+        arm_action_pose_mat = convert_pose_mat_rep(
+            arm_action_mat, 
+            ref_pose_mat=arm_pose_mat[-1],
+            pose_rep=self.obs_pose_repr,
+            backward=False)
+        
+        base_action_rel = base_action - base_pose_obs[-1]
+        base_obs_rel = base_pose_obs - base_pose_obs[-1]
+        
+        # convert pose to pos + rot6d representation
+        obs_pose = mat_to_pose10d(arm_obs_pose_mat)
+        arm_action_pose = mat_to_pose10d(arm_action_pose_mat)
+        
+        action_gripper = data['action'][..., -1:]
+        data['action'] = (np.concatenate([base_action_rel, arm_action_pose, action_gripper], axis=-1))
+
+        # generate data
+        obs_dict[f'arm_pos'] = obs_pose[:,:3]
+        obs_dict[f'arm_rot_axis_angle'] = obs_pose[:,3:]
+        obs_dict[f'base_pos'] = base_obs_rel
+            
         
         torch_data = {
             'obs': dict_apply(obs_dict, torch.from_numpy),
