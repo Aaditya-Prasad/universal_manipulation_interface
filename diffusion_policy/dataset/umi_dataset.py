@@ -232,6 +232,8 @@ class UmiDataset(BaseDataset):
                 this_normalizer = get_identity_normalizer_from_stat(stat)
             elif key.endswith('gripper_width'):
                 this_normalizer = get_range_normalizer_from_stat(stat)
+            elif key.endswith('pose'):
+                this_normalizer = get_range_normalizer_from_stat(stat)
             else:
                 raise RuntimeError('unsupported')
             normalizer[key] = this_normalizer

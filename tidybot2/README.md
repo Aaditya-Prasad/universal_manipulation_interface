@@ -4,6 +4,7 @@ On the left is the reference file in mb/ which come largely from Consistency Pol
 - 6dpos_dataset -> umi_dataset.py, the latter includes fixed relative obs + actions
 
 - N/A -> diffusion_unet_timm_policy.py, this is new from UMI, has a new obs encoder and perturbs the diffusion pos. Not directly changed but is important. 
+- N/A -> tidybot2.yaml, new config file in diffusion_policy/config/task/
 
 - utils -> N/A, utils is new and we leave it in this folder
 - policy wrapper -> N/A, policy wrapper is new and we leave it in this folder
