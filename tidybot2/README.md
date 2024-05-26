@@ -5,6 +5,7 @@ On the left is the reference file in mb/ which come largely from Consistency Pol
 
 - N/A -> diffusion_unet_timm_policy.py, this is new from UMI, has a new obs encoder and perturbs the diffusion pos. Not directly changed but is important. 
 - N/A -> tidybot2.yaml, new config file in diffusion_policy/config/task/
+- N/A -> train_uner_tidybot2.yaml, new config file in diffusion_policy/config
 
 - utils -> N/A, utils is new and we leave it in this folder
 - policy wrapper -> N/A, policy wrapper is new and we leave it in this folder
