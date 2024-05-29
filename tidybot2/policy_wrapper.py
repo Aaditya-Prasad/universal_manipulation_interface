@@ -2,7 +2,7 @@
 import torch 
 import numpy as np
 from collections import deque
-from consistency_policy.utils import euler_to_quat, rot6d_to_rmat, rmat_to_euler
+from tidybot2.utils import euler_to_quat, rot6d_to_rmat, rmat_to_euler
 from torchvision import transforms as T
 from diffusion_policy.common.pytorch_util import dict_apply
 
@@ -43,7 +43,8 @@ class PolicyWrapper:
             obs_dict = {
                 "base_pose": observation["base_pose"],
                 "arm_pos": observation["arm_pos"],
-                "arm_quat": observation["arm_quat"],
+                "arm_rot_axis_angle": observation["arm_rot_axis_angle"],
+                "arm_rot_axis_angle_wrt_start": observation["arm_rot_axis_angle_wrt_start"],
                 "gripper_pos": observation["gripper_pos"],
                 "base_image": observation["base_image"],
                 "wrist_image": observation["wrist_image"],
@@ -57,9 +58,6 @@ class PolicyWrapper:
                     # add an unsqueeze to make it a batch of 1
                     obs_dict[key] = torch.tensor(obs_dict[key]).to(self.device).unsqueeze(0) #.unsqueeze(0)
 
-
-            assert not torch.any(obs_dict['arm_quat'][0] < 0), 'quaternion with negative value on first entry found' \
-                                                            'policy learning assumes non-negative quat representation'
 
             # convert all values in obs_dict to numpy
             obs_dict = dict_apply(obs_dict, lambda x: x.cpu().numpy())
