@@ -27,9 +27,11 @@ from diffusion_policy.common.json_logger import JsonLogger
 from diffusion_policy.common.pytorch_util import dict_apply, optimizer_to
 from diffusion_policy.model.diffusion.ema_model import EMAModel
 from diffusion_policy.model.common.lr_scheduler import get_scheduler
+from diffusion_policy.dataset.base_dataset import BaseDataset
 
-from mb.utils import load_normalizer
-from mb.base_workspace import BaseWorkspace
+
+from tidybot2.utils import load_normalizer
+from tidybot2.base_workspace import BaseWorkspace
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
@@ -86,9 +88,9 @@ class TrainDiffusionUnetHybridWorkspace(BaseWorkspace):
 
         if not cfg.training.inference_mode:
             # configure dataset
-            dataset: BaseImageDataset
+            dataset: BaseDataset
             dataset = hydra.utils.instantiate(cfg.task.dataset)
-            assert isinstance(dataset, BaseImageDataset)
+            assert isinstance(dataset, BaseDataset)
             train_dataloader = DataLoader(dataset, **cfg.dataloader)
             normalizer = dataset.get_normalizer()
 

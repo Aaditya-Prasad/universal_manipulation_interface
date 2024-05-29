@@ -239,11 +239,11 @@ def array_to_stats(arr: np.ndarray):
     return stat
 
 def concatenate_normalizer(normalizers: list):
-    scale = torch.concatenate([normalizer.params_dict['scale'] for normalizer in normalizers], axis=-1)
-    offset = torch.concatenate([normalizer.params_dict['offset'] for normalizer in normalizers], axis=-1)
+    scale = torch.cat([normalizer.params_dict['scale'] for normalizer in normalizers], axis=-1)
+    offset = torch.cat([normalizer.params_dict['offset'] for normalizer in normalizers], axis=-1)
     input_stats_dict = dict_apply_reduce(
         [normalizer.params_dict['input_stats'] for normalizer in normalizers], 
-        lambda x: torch.concatenate(x,axis=-1))
+        lambda x: torch.cat(x,axis=-1))
     return SingleFieldLinearNormalizer.create_manual(
         scale=scale,
         offset=offset,

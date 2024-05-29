@@ -4,7 +4,7 @@ import torch.nn as nn
 import dill
 import hydra
 from omegaconf import OmegaConf
-from mb.base_workspace import BaseWorkspace
+from tidybot2.base_workspace import BaseWorkspace
 from diffusion_policy.dataset.base_dataset import BaseImageDataset, LinearNormalizer
 import re
 from scipy.spatial.transform import Rotation as R

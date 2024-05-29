@@ -31,9 +31,139 @@ from umi.common.pose_util import pose_to_mat, mat_to_pose10d
 
 register_codecs()
 
+
+def convert_robomimic_to_replay(store, shape_meta, dataset_path, 
+        n_workers=None, max_inflight_tasks=None):
+    if n_workers is None:
+        n_workers = multiprocessing.cpu_count()
+    if max_inflight_tasks is None:
+        max_inflight_tasks = n_workers * 5
+
+    # parse shape_meta
+    rgb_keys = list()
+    lowdim_keys = list()
+    # construct compressors and chunks
+    obs_shape_meta = shape_meta['obs']
+    for key, attr in obs_shape_meta.items():
+        shape = attr['shape']
+        type = attr.get('type', 'low_dim')
+        if type == 'rgb':
+            rgb_keys.append(key)
+        elif type == 'low_dim':
+            lowdim_keys.append(key)
+    
+    root = zarr.group(store)
+    data_group = root.require_group('data', overwrite=True)
+    meta_group = root.require_group('meta', overwrite=True)
+
+    with h5py.File(dataset_path) as file:
+        # count total steps
+        demos = file['data']
+        episode_ends = list()
+        prev_end = 0
+        for i in range(len(demos)):
+            demo = demos[f'demo_{i}']
+            episode_length = demo['actions'].shape[0]
+            episode_end = prev_end + episode_length
+            prev_end = episode_end
+            episode_ends.append(episode_end)
+        n_steps = episode_ends[-1]
+        episode_starts = [0] + episode_ends[:-1]
+        _ = meta_group.array('episode_ends', episode_ends, 
+            dtype=np.int64, compressor=None, overwrite=True)
+
+        # save lowdim data
+        for key in tqdm(lowdim_keys + ['action'], desc="Loading lowdim data"):
+            if key.endswith('wrt_start'):
+                continue
+            data_key = 'obs/' + key
+            if key == 'action':
+                data_key = 'actions'
+            this_data = list()
+            for i in range(len(demos)):
+                demo = demos[f'demo_{i}']
+                this_data.append(demo[data_key][:].astype(np.float32))
+            this_data = np.concatenate(this_data, axis=0)
+            if key == 'action':
+                # this_data = _convert_actions(
+                #     raw_actions=this_data,
+                #     abs_action=abs_action,
+                #     rotation_transformer=rotation_transformer
+                # )
+                # assert this_data.shape == (n_steps,) + tuple(shape_meta['action']['shape'])
+
+                # We now handle conversion within get item!
+                # We can't assert shape here because rot will still be in axis angle, conversion to 
+                # 6d happens in get item
+                pass
+            else:
+                if not (this_data.shape == (n_steps,) + tuple(shape_meta['obs'][key]['shape']) \
+                        or (this_data.shape == (n_steps,) + tuple(shape_meta['obs'][key]['raw_shape']))): # not all have raw shape, intended short-circuit
+                    raise RuntimeError(f"shape mismatch for {key}: {this_data.shape} vs {(n_steps,) + tuple(shape_meta['obs'][key]['shape'])}")
+            _ = data_group.array(
+                name=key,
+                data=this_data,
+                shape=this_data.shape,
+                chunks=this_data.shape,
+                compressor=None,
+                dtype=this_data.dtype
+            )
+        
+        def img_copy(zarr_arr, zarr_idx, hdf5_arr, hdf5_idx):
+            try:
+                zarr_arr[zarr_idx] = hdf5_arr[hdf5_idx]
+                # make sure we can successfully decode
+                _ = zarr_arr[zarr_idx]
+                return True
+            except Exception as e:
+                return False
+        
+        with tqdm(total=n_steps*len(rgb_keys), desc="Loading image data", mininterval=1.0) as pbar:
+            # one chunk per thread, therefore no synchronization needed
+            with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
+                futures = set()
+                for key in rgb_keys:
+                    data_key = 'obs/' + key
+                    shape = tuple(shape_meta['obs'][key]['shape'])
+                    c,h,w = shape
+                    this_compressor = Jpeg2k(level=50)
+                    img_arr = data_group.require_dataset(
+                        name=key,
+                        shape=(n_steps,h,w,c),
+                        chunks=(1,h,w,c),
+                        compressor=this_compressor,
+                        dtype=np.uint8
+                    )
+                    for episode_idx in range(len(demos)):
+                        demo = demos[f'demo_{episode_idx}']
+                        hdf5_arr = demo['obs'][key]
+                        for hdf5_idx in range(hdf5_arr.shape[0]):
+                            if len(futures) >= max_inflight_tasks:
+                                # limit number of inflight tasks
+                                completed, futures = concurrent.futures.wait(futures, 
+                                    return_when=concurrent.futures.FIRST_COMPLETED)
+                                for f in completed:
+                                    if not f.result():
+                                        raise RuntimeError('Failed to encode image!')
+                                pbar.update(len(completed))
+
+                            zarr_idx = episode_starts[episode_idx] + hdf5_idx
+                            futures.add(
+                                executor.submit(img_copy, 
+                                    img_arr, zarr_idx, hdf5_arr, hdf5_idx))
+                completed, futures = concurrent.futures.wait(futures)
+                for f in completed:
+                    if not f.result():
+                        raise RuntimeError('Failed to encode image!')
+                pbar.update(len(completed))
+
+    replay_buffer = ReplayBuffer(root)
+    return replay_buffer
+
 class UmiDataset(BaseDataset):
     def __init__(self,
         shape_meta: dict,
+        dataset_shape_meta: dict,
         dataset_path: str,
         cache_dir: Optional[str]=None,
         pose_repr: dict={},
@@ -102,9 +232,9 @@ class UmiDataset(BaseDataset):
                 try:
                     print('Cache does not exist. Creating!')
                     # store = zarr.DirectoryStore(cache_zarr_path)
-                    replay_buffer = _convert_robomimic_to_replay(
+                    replay_buffer = convert_robomimic_to_replay(
                         store=zarr.MemoryStore(), 
-                        shape_meta=shape_meta, 
+                        shape_meta=dataset_shape_meta, 
                         dataset_path=dataset_path,
                         )
                     print('Saving cache to disk.')
@@ -166,9 +296,11 @@ class UmiDataset(BaseDataset):
             if not 'wrt' in key:
                 self.sampler_lowdim_keys.append(key)
     
-        for key in replay_buffer.keys():
-            if key.endswith('_demo_start_pose') or key.endswith('_demo_end_pose'):
+        for key in dataset_shape_meta['obs'].keys():
+            print(f"KEY: {key}")
+            if key.endswith('_demo_start_pos') or key.endswith('_demo_end_pos'):
                 self.sampler_lowdim_keys.append(key)
+                print(f"AUTO-ADDED {key} to lowdim_keys")
                 query_key = 'arm_pos'
                 key_horizon[key] = shape_meta['obs'][query_key]['horizon']
                 key_latency_steps[key] = shape_meta['obs'][query_key]['latency_steps']
@@ -203,129 +335,6 @@ class UmiDataset(BaseDataset):
         self.threadpool_limits_is_applied = False
 
     
-    def _convert_robomimic_to_replay(store, shape_meta, dataset_path, 
-            n_workers=None, max_inflight_tasks=None):
-        if n_workers is None:
-            n_workers = multiprocessing.cpu_count()
-        if max_inflight_tasks is None:
-            max_inflight_tasks = n_workers * 5
-
-        # parse shape_meta
-        rgb_keys = list()
-        lowdim_keys = list()
-        # construct compressors and chunks
-        obs_shape_meta = shape_meta['obs']
-        for key, attr in obs_shape_meta.items():
-            shape = attr['shape']
-            type = attr.get('type', 'low_dim')
-            if type == 'rgb':
-                rgb_keys.append(key)
-            elif type == 'low_dim':
-                lowdim_keys.append(key)
-        
-        root = zarr.group(store)
-        data_group = root.require_group('data', overwrite=True)
-        meta_group = root.require_group('meta', overwrite=True)
-
-        with h5py.File(dataset_path) as file:
-            # count total steps
-            demos = file['data']
-            episode_ends = list()
-            prev_end = 0
-            for i in range(len(demos)):
-                demo = demos[f'demo_{i}']
-                episode_length = demo['actions'].shape[0]
-                episode_end = prev_end + episode_length
-                prev_end = episode_end
-                episode_ends.append(episode_end)
-            n_steps = episode_ends[-1]
-            episode_starts = [0] + episode_ends[:-1]
-            _ = meta_group.array('episode_ends', episode_ends, 
-                dtype=np.int64, compressor=None, overwrite=True)
-
-            # save lowdim data
-            for key in tqdm(lowdim_keys + ['action'], desc="Loading lowdim data"):
-                data_key = 'obs/' + key
-                if key == 'action':
-                    data_key = 'actions'
-                this_data = list()
-                for i in range(len(demos)):
-                    demo = demos[f'demo_{i}']
-                    this_data.append(demo[data_key][:].astype(np.float32))
-                this_data = np.concatenate(this_data, axis=0)
-                if key == 'action':
-                    # this_data = _convert_actions(
-                    #     raw_actions=this_data,
-                    #     abs_action=abs_action,
-                    #     rotation_transformer=rotation_transformer
-                    # )
-                    # assert this_data.shape == (n_steps,) + tuple(shape_meta['action']['shape'])
-
-                    # We now handle conversion within get item!
-                    # We can't assert shape here because rot will still be in axis angle, conversion to 
-                    # 6d happens in get item
-                    pass
-                else:
-                    assert this_data.shape == (n_steps,) + tuple(shape_meta['obs'][key]['shape'])
-                _ = data_group.array(
-                    name=key,
-                    data=this_data,
-                    shape=this_data.shape,
-                    chunks=this_data.shape,
-                    compressor=None,
-                    dtype=this_data.dtype
-                )
-            
-            def img_copy(zarr_arr, zarr_idx, hdf5_arr, hdf5_idx):
-                try:
-                    zarr_arr[zarr_idx] = hdf5_arr[hdf5_idx]
-                    # make sure we can successfully decode
-                    _ = zarr_arr[zarr_idx]
-                    return True
-                except Exception as e:
-                    return False
-            
-            with tqdm(total=n_steps*len(rgb_keys), desc="Loading image data", mininterval=1.0) as pbar:
-                # one chunk per thread, therefore no synchronization needed
-                with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
-                    futures = set()
-                    for key in rgb_keys:
-                        data_key = 'obs/' + key
-                        shape = tuple(shape_meta['obs'][key]['shape'])
-                        c,h,w = shape
-                        this_compressor = Jpeg2k(level=50)
-                        img_arr = data_group.require_dataset(
-                            name=key,
-                            shape=(n_steps,h,w,c),
-                            chunks=(1,h,w,c),
-                            compressor=this_compressor,
-                            dtype=np.uint8
-                        )
-                        for episode_idx in range(len(demos)):
-                            demo = demos[f'demo_{episode_idx}']
-                            hdf5_arr = demo['obs'][key]
-                            for hdf5_idx in range(hdf5_arr.shape[0]):
-                                if len(futures) >= max_inflight_tasks:
-                                    # limit number of inflight tasks
-                                    completed, futures = concurrent.futures.wait(futures, 
-                                        return_when=concurrent.futures.FIRST_COMPLETED)
-                                    for f in completed:
-                                        if not f.result():
-                                            raise RuntimeError('Failed to encode image!')
-                                    pbar.update(len(completed))
-
-                                zarr_idx = episode_starts[episode_idx] + hdf5_idx
-                                futures.add(
-                                    executor.submit(img_copy, 
-                                        img_arr, zarr_idx, hdf5_arr, hdf5_idx))
-                    completed, futures = concurrent.futures.wait(futures)
-                    for f in completed:
-                        if not f.result():
-                            raise RuntimeError('Failed to encode image!')
-                    pbar.update(len(completed))
-
-        replay_buffer = ReplayBuffer(root)
-        return replay_buffer
 
     
     def get_validation_dataset(self):
@@ -359,7 +368,8 @@ class UmiDataset(BaseDataset):
         )
         for batch in tqdm(dataloader, desc='iterating dataset to get normalization'):
             for key in self.lowdim_keys:
-                data_cache[key].append(copy.deepcopy(batch['obs'][key]))
+                if(key in batch['obs'].keys()):
+                    data_cache[key].append(copy.deepcopy(batch['obs'][key]))
             data_cache['action'].append(copy.deepcopy(batch['action']))
         self.sampler.ignore_rgb(False)
 
@@ -438,7 +448,7 @@ class UmiDataset(BaseDataset):
         ], axis=-1))
         
         # get start pose
-        start_pose = obs_dict[f'arm_demo_start_pose'][0]
+        start_pose = obs_dict[f'arm_demo_start_pos'][0]
         # HACK: add noise to episode start pose
         start_pose += np.random.normal(scale=[0.05,0.05,0.05,0.05,0.05,0.05],size=start_pose.shape)
         start_pose_mat = pose_to_mat(start_pose)
@@ -454,7 +464,7 @@ class UmiDataset(BaseDataset):
 
         del_keys = list()
         for key in obs_dict:
-            if key.endswith('_demo_start_pose') or key.endswith('_demo_end_pose'):
+            if key.endswith('_demo_start_pos') or key.endswith('_demo_end_pos'):
                 del_keys.append(key)
         for key in del_keys:
             del obs_dict[key]
@@ -496,7 +506,7 @@ class UmiDataset(BaseDataset):
         # generate data
         obs_dict[f'arm_pos'] = obs_pose[:,:3]
         obs_dict[f'arm_rot_axis_angle'] = obs_pose[:,3:]
-        obs_dict[f'base_pos'] = base_obs_rel
+        obs_dict[f'base_pose'] = base_obs_rel
             
         
         torch_data = {
