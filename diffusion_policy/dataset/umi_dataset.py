@@ -397,7 +397,7 @@ class UmiDataset(BaseDataset):
                 this_normalizer = get_range_normalizer_from_stat(stat)
             elif key.endswith('pos_abs'):
                 this_normalizer = get_range_normalizer_from_stat(stat)
-            elif key.endswith('rot_axis_angle') or 'rot_axis_angle_wrt' in key:
+            elif key.endswith('rot') or 'rot_wrt' in key:
                 this_normalizer = get_identity_normalizer_from_stat(stat)
             elif key.endswith('gripper_width'):
                 this_normalizer = get_range_normalizer_from_stat(stat)
@@ -438,13 +438,13 @@ class UmiDataset(BaseDataset):
         # generate relative pose with respect to episode start
         # HACK: add noise to episode start pose
         # if (f'robot{other_robot_id}_eef_pos_wrt_start' not in self.shape_meta['obs']) and \
-        #     (f'robot{other_robot_id}_eef_rot_axis_angle_wrt_start' not in self.shape_meta['obs']):
+        #     (f'robot{other_robot_id}_eef_rot_wrt_start' not in self.shape_meta['obs']):
         #     continue
         
         # convert pose to mat
         pose_mat = pose_to_mat(np.concatenate([
             obs_dict[f'arm_pos'],
-            obs_dict[f'arm_rot_axis_angle']
+            obs_dict[f'arm_rot']
         ], axis=-1))
         
         # get start pose
@@ -460,7 +460,7 @@ class UmiDataset(BaseDataset):
         
         rel_obs_pose = mat_to_pose10d(rel_obs_pose_mat)
         # obs_dict[f'robot{robot_id}_eef_pos_wrt_start'] = rel_obs_pose[:,:3]
-        obs_dict[f'arm_rot_axis_angle_wrt_start'] = rel_obs_pose[:,3:]
+        obs_dict[f'arm_rot_wrt_start'] = rel_obs_pose[:,3:]
 
         del_keys = list()
         for key in obs_dict:
@@ -472,7 +472,7 @@ class UmiDataset(BaseDataset):
             # convert pose to mat
         arm_pose_mat = pose_to_mat(np.concatenate([
             obs_dict[f'arm_pos'],
-            obs_dict[f'arm_rot_axis_angle']
+            obs_dict[f'arm_rot']
         ], axis=-1))
         base_pose_obs = obs_dict['base_pose']
 
@@ -505,7 +505,7 @@ class UmiDataset(BaseDataset):
 
         # generate data
         obs_dict[f'arm_pos'] = obs_pose[:,:3]
-        obs_dict[f'arm_rot_axis_angle'] = obs_pose[:,3:]
+        obs_dict[f'arm_rot'] = obs_pose[:,3:]
         obs_dict[f'base_pose'] = base_obs_rel
             
         

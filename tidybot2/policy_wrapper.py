@@ -43,8 +43,8 @@ class PolicyWrapper:
             obs_dict = {
                 "base_pose": observation["base_pose"],
                 "arm_pos": observation["arm_pos"],
-                "arm_rot_axis_angle": observation["arm_rot_axis_angle"],
-                "arm_rot_axis_angle_wrt_start": observation["arm_rot_axis_angle_wrt_start"],
+                "arm_rot": observation["arm_rot"],
+                "arm_rot_wrt_start": observation["arm_rot_wrt_start"],
                 "gripper_pos": observation["gripper_pos"],
                 "base_image": observation["base_image"],
                 "wrist_image": observation["wrist_image"],

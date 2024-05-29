@@ -42,7 +42,7 @@ dataset_shape_meta: &dsm
       down_sample_steps: ${task.obs_down_sample_steps} # float
       type: low_dim
       ignore_by_policy: ${task.ignore_proprioception}
-    arm_rot_axis_angle:
+    arm_rot:
       raw_shape: [3]
       shape: [6]
       horizon: ${task.low_dim_obs_horizon} # int
@@ -103,7 +103,7 @@ shape_meta: &shape_meta
       down_sample_steps: ${task.obs_down_sample_steps} # float
       type: low_dim
       ignore_by_policy: ${task.ignore_proprioception}
-    arm_rot_axis_angle:
+    arm_rot:
       raw_shape: [3]
       shape: [6]
       horizon: ${task.low_dim_obs_horizon} # int
@@ -119,7 +119,7 @@ shape_meta: &shape_meta
       down_sample_steps: ${task.obs_down_sample_steps} # float
       type: low_dim
       ignore_by_policy: ${task.ignore_proprioception}
-    arm_rot_axis_angle_wrt_start:
+    arm_rot_wrt_start:
       raw_shape: [3]
       shape: [6]
       horizon: ${task.low_dim_obs_horizon} # int
@@ -135,7 +135,7 @@ shape_meta: &shape_meta
     rotation_rep: rotation_6d
 
 task_name: &task_name tidybot2
-dataset_path: data/aaditya/data/demo_tb_hdf5
+dataset_path: data/aaditya/data/demo_rot.hdf5
 pose_repr: &pose_repr
   obs_pose_repr: relative # abs or rel
   action_pose_repr: relative # abs or rel or delta

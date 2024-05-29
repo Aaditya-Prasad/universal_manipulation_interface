@@ -147,7 +147,7 @@ class SequenceSampler:
                     if key.endswith('quat'):
                         rot_preprocess = st.Rotation.from_quat
                         rot_postprocess = st.Rotation.as_quat
-                    elif key.endswith('axis_angle'):
+                    elif key.endswith('axis_angle') or key.endswith('rot'):
                         rot_preprocess = st.Rotation.from_rotvec
                         rot_postprocess = st.Rotation.as_rotvec
                     else:
