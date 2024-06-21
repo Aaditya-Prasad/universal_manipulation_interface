@@ -19,6 +19,8 @@ On the left is the reference file in mb/ which come largely from Consistency Pol
 - arm_demo_start_pos [T, 6] (3 dims for arm_pos, 3 dims for arm_rot_axis_angle, also T can just be the same 6 values copied T times)
 - action [T, 10] (3 base, 3 arm, 3 aa arm, 1 gripper): will be converted to [T, 13] for policy fitting since aa -> 6d
 
+input to the policy has 19 low_dim shape and 2 images, see example.ipynb
+
 ### TODOs:
 - Val loss is commented out in the workspace code, unsure why
 
