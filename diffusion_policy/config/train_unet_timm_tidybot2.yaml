@@ -174,7 +174,7 @@ training:
   max_val_steps: null
   # misc
   tqdm_interval_sec: 1.0
-  output_dir: data/test
+  output_dir: data/test_timm
   inference_mode: False
   online_rollouts: False
 

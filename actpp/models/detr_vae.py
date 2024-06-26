@@ -267,6 +267,7 @@ def build_encoder(args):
 
 
 def build(args):
+    print("Assuming state dim is 19 because this is the mobile base repo!")
     state_dim = 19 # TODO hardcode
 
     # From state

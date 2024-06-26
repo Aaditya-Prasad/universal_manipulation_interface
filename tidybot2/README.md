@@ -3,13 +3,18 @@ On the left is the reference file in mb/ which come largely from Consistency Pol
 - mb_diffusion_hybrid_workspace -> train_diffusion_unet_image_workspace, the latter includes new code from UMI for the policy we're using, we add inference mode, eval mode, etc. 
 - 6dpos_dataset -> umi_dataset.py, the latter includes fixed relative obs + actions
 
-- N/A -> diffusion_unet_timm_policy.py, this is new from UMI, has a new obs encoder and perturbs the diffusion pos. Not directly changed but is important. 
+- N/A -> diffusion_unet_timm_policy.py, this is new from UMI, has a new obs encoder and perturbs the diffusion pos. Not directly changed but is important. Note that we don't currently use it in our workspace, we use diffusion_unet_image_policy.py instead
 - N/A -> tidybot2.yaml, new config file in diffusion_policy/config/task/
 - N/A -> train_uner_tidybot2.yaml, new config file in diffusion_policy/config
 
 - utils -> N/A, utils is new and we leave it in this folder
 - policy wrapper -> N/A, policy wrapper is new and we leave it in this folder
 - example.ipynb -> N/A, ...
+
+Note that we have 
+- mb_diffusion_hybrid_workspace which uses the original robomimic obs encoder (don't use this)
+- train_unet_image_tidybot2.yaml, which uses the multi image obs encoder, which works with general resolution
+- train_unet_timm_tidybot2.yaml, which uses the timm obs encoder, which works with 224x224 images but is probably more powerful
 
 ### Keys:
 - base_pose [T, 3]

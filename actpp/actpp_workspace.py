@@ -31,9 +31,11 @@ from diffusion_policy.model.common.lr_scheduler import get_scheduler
 from tidybot2.utils import load_normalizer
 from accelerate import Accelerator
 
+from actpp.actpp_policy import ACTPolicy
+
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
-class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
+class ACTWorkspace(BaseWorkspace):
     include_keys = ['global_step', 'epoch']
     exclude_keys = tuple()
 
@@ -47,15 +49,8 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
         random.seed(seed)
 
         # configure model
-        self.model = hydra.utils.instantiate(cfg.policy)
-
-        self.ema_model = None
-        if cfg.training.use_ema:
-            self.ema_model = copy.deepcopy(self.model)
-
-        # configure training state
-        # self.optimizer = hydra.utils.instantiate(
-        #     cfg.optimizer, params=self.model.parameters())
+        self.model: ACTPolicy = ACTPolicy(cfg)
+        self.optimizer = self.model.configure_optimizers()
 
         obs_encorder_lr = cfg.optimizer.lr
         if cfg.policy.obs_encoder.pretrained:
@@ -70,14 +65,6 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
             {'params': self.model.model.parameters()},
             {'params': obs_encorder_params, 'lr': obs_encorder_lr}
         ]
-        # self.optimizer = hydra.utils.instantiate(
-        #     cfg.optimizer, params=param_groups)
-        optimizer_cfg = OmegaConf.to_container(cfg.optimizer, resolve=True)
-        optimizer_cfg.pop('_target_')
-        self.optimizer = torch.optim.AdamW(
-            params=param_groups,
-            **optimizer_cfg
-        )
 
         # configure training state
         self.global_step = 0
@@ -140,8 +127,6 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
             print('val dataset:', len(val_dataset), 'val dataloader:', len(val_dataloader))
 
             self.model.set_normalizer(normalizer)
-            if cfg.training.use_ema:
-                self.ema_model.set_normalizer(normalizer)
 
             # configure lr scheduler
             lr_scheduler = get_scheduler(
@@ -156,12 +141,6 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
                 last_epoch=self.global_step-1
             )
 
-        # configure ema
-        ema: EMAModel = None
-        if cfg.training.use_ema:
-            ema = hydra.utils.instantiate(
-                cfg.ema,
-                model=self.ema_model)
 
         if cfg.training.online_rollouts:
             # configure env
@@ -201,8 +180,6 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
             train_dataloader, val_dataloader, self.model, self.optimizer, lr_scheduler
         )
         device = self.model.device
-        if self.ema_model is not None:
-            self.ema_model.to(device)
 
         # save batch for sampling
         train_sampling_batch = None
@@ -240,7 +217,7 @@ class TrainDiffusionUnetImageWorkspace(BaseWorkspace):
                             train_sampling_batch = batch
 
                             # compute loss
-                            raw_loss = self.model.compute_loss(batch)
+                            raw_loss = self.model(batch)
                             loss = raw_loss / cfg.training.gradient_accumulate_every
                             loss.backward()
 

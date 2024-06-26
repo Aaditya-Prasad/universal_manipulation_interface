@@ -28,6 +28,7 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
             n_groups=8,
             cond_predict_scale=True,
             input_pertub=0.1,
+            inpaint_fixed_action_prefix=False,
             # parameters passed to step
             **kwargs):
         super().__init__()
@@ -36,6 +37,7 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
         action_shape = shape_meta['action']['shape']
         assert len(action_shape) == 1
         action_dim = action_shape[0]
+        action_horizon = shape_meta['action']['horizon']
         # get feature dim
         obs_feature_dim = obs_encoder.output_shape()[0]
 
@@ -76,6 +78,8 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
         self.obs_as_global_cond = obs_as_global_cond
         self.input_pertub = input_pertub
         self.kwargs = kwargs
+        self.inpaint_fixed_action_prefix = inpaint_fixed_action_prefix
+        self.action_horizon = action_horizon
 
         if num_inference_steps is None:
             num_inference_steps = noise_scheduler.config.num_train_timesteps
@@ -89,6 +93,7 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
             # keyword arguments to scheduler.step
             **kwargs
             ):
+        print(kwargs)
         model = self.model
         scheduler = self.noise_scheduler
 
@@ -113,7 +118,7 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
             trajectory = scheduler.step(
                 model_output, t, trajectory, 
                 generator=generator,
-                **kwargs
+                
                 ).prev_sample
         
         # finally make sure conditioning is enforced
@@ -122,67 +127,45 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
         return trajectory
 
 
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], fixed_action_prefix: torch.Tensor=None) -> Dict[str, torch.Tensor]:
         """
         obs_dict: must include "obs" key
+        fixed_action_prefix: unnormalized action prefix
         result: must include "action" key
         """
         assert 'past_action' not in obs_dict # not implemented yet
         # normalize input
         nobs = self.normalizer.normalize(obs_dict)
-        value = next(iter(nobs.values()))
-        B, To = value.shape[:2]
-        T = self.horizon
-        Da = self.action_dim
-        Do = self.obs_feature_dim
-        To = self.n_obs_steps
+        B = next(iter(nobs.values())).shape[0]
 
-        # build input
-        device = self.device
-        dtype = self.dtype
+        # condition through global feature
+        global_cond = self.obs_encoder(nobs)
 
-        # handle different ways of passing observation
-        local_cond = None
-        global_cond = None
-        if self.obs_as_global_cond:
-            # condition through global feature
-            this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
-            nobs_features = self.obs_encoder(this_nobs)
-            # reshape back to B, Do
-            global_cond = nobs_features.reshape(B, -1)
-            # empty data for action
-            cond_data = torch.zeros(size=(B, T, Da), device=device, dtype=dtype)
-            cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
-        else:
-            # condition through impainting
-            this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
-            nobs_features = self.obs_encoder(this_nobs)
-            # reshape back to B, T, Do
-            nobs_features = nobs_features.reshape(B, To, -1)
-            cond_data = torch.zeros(size=(B, T, Da+Do), device=device, dtype=dtype)
-            cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
-            cond_data[:,:To,Da:] = nobs_features
-            cond_mask[:,:To,Da:] = True
+        # empty data for action
+        cond_data = torch.zeros(size=(B, self.action_horizon, self.action_dim), device=self.device, dtype=self.dtype)
+        cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
+
+        if fixed_action_prefix is not None and self.inpaint_fixed_action_prefix:
+            n_fixed_steps = fixed_action_prefix.shape[1]
+            cond_data[:, :n_fixed_steps] = fixed_action_prefix
+            cond_mask[:, :n_fixed_steps] = True
+            cond_data = self.normalizer['action'].normalize(cond_data)
+
 
         # run sampling
         nsample = self.conditional_sample(
-            cond_data, 
-            cond_mask,
-            local_cond=local_cond,
+            condition_data=cond_data, 
+            condition_mask=cond_mask,
+            local_cond=None,
             global_cond=global_cond,
             **self.kwargs)
         
         # unnormalize prediction
-        naction_pred = nsample[...,:Da]
-        action_pred = self.normalizer['action'].unnormalize(naction_pred)
-
-        # get action
-        start = To - 1
-        end = start + self.n_action_steps
-        action = action_pred[:,start:end]
+        assert nsample.shape == (B, self.action_horizon, self.action_dim)
+        action_pred = self.normalizer['action'].unnormalize(nsample)
         
         result = {
-            'action': action,
+            'action': action_pred,
             'action_pred': action_pred
         }
         return result

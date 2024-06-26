@@ -3,7 +3,7 @@ defaults:
   - task: tidybot2
 
 name: train_unet_tidybot2
-_target_: tidybot2.mb_diffusion_hybrid_workspace.TrainDiffusionUnetHybridWorkspace
+_target_: diffusion_policy.workspace.train_diffusion_unet_image_workspace.TrainDiffusionUnetImageWorkspace
 
 task_name: ${task.name}
 shape_meta: ${task.shape_meta}
@@ -12,7 +12,7 @@ exp_name: "default"
 n_action_steps: 8
 
 policy:
-  _target_: diffusion_policy.policy.diffusion_unet_hybrid_image_policy.DiffusionUnetHybridImagePolicy
+  _target_: diffusion_policy.policy.diffusion_unet_image_policy.DiffusionUnetImagePolicy
 
   shape_meta: ${shape_meta}
   obs_encoder_group_norm: true
@@ -29,6 +29,22 @@ policy:
     set_alpha_to_one: True
     steps_offset: 0
     prediction_type: epsilon # or sample
+
+  obs_encoder:
+    _target_: diffusion_policy.model.vision.multi_image_obs_encoder.MultiImageObsEncoder
+    shape_meta: ${shape_meta}
+    rgb_model:
+      _target_: diffusion_policy.model.vision.model_getter.get_resnet
+      name: resnet18
+      weights: null
+    resize_shape: null
+    crop_shape: [76, 76]
+    # constant center crop
+    random_crop: True
+    use_group_norm: True
+    share_rgb_model: False
+    imagenet_norm: True
+    pretrained: False
     
   num_inference_steps: 16
   obs_as_global_cond: True
@@ -113,7 +129,7 @@ training:
   max_val_steps: null
   # misc
   tqdm_interval_sec: 1.0
-  output_dir: data/test
+  output_dir: data/test_direct
   inference_mode: False
   online_rollouts: False
 

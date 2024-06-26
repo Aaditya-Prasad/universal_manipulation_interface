@@ -7,20 +7,20 @@ import IPython
 e = IPython.embed
 from .models import build_ACT_model, build_CNNMLP_model
 from typing import Dict
-from diffusion_policy.model.common.normalizer import LinearNormalizer
+from diffusion_policy.model.common.normalizer import LinearNormalizer, DummyNormalizer
 from diffusion_policy.policy.base_image_policy import BaseImagePolicy
-
+from omegaconf import OmegaConf
 from collections import OrderedDict
 
 class ACTPolicy(BaseImagePolicy):
-    # args should usually come from cfg.policy
-    def __init__(self, args):
+    # this should be the main args, with both args.policy and args.optimizer
+    def __init__(self, args: OmegaConf):
         super().__init__()
         model, optimizer = build_ACT_model_and_optimizer(args)
         self.model = model # CVAE decoder
         self.optimizer = optimizer
-        self.kl_weight = args['kl_weight']
-        self.vq = args['vq']
+        self.kl_weight = args.training.kl_weight
+        self.vq = args.policy.vq
         self.normalizer = LinearNormalizer()
         print(f'KL Weight {self.kl_weight}')
 
@@ -30,6 +30,8 @@ class ACTPolicy(BaseImagePolicy):
         nobs = self.normalizer(obs)
 
         low_dim_obs = torch.cat((nobs['base_pose'], nobs['arm_pos'], nobs['arm_rot'], nobs['arm_rot_wrt_start'], nobs['gripper_pos']), dim=-1) # b 19
+        if len(low_dim_obs.shape) == 3:
+            low_dim_obs = low_dim_obs.squeeze(1) # actpp only takes obs history of 1, but the policy wrapper doesn't know this  
         images = torch.cat((nobs['base_image'], nobs['wrist_image']), dim=1) # b 2 c h w
         
         if actions is not None: # training time
@@ -54,18 +56,6 @@ class ACTPolicy(BaseImagePolicy):
             a_hat, _, (_, _), _, _ = self.model(low_dim_obs, images, env_state, vq_sample=vq_sample) # no action, sample from prior
             return a_hat
 
-    # Following Diffusion Policy API
-    def predict_action(self, obs_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-        return self(obs_dict)
-        
-    # Following Diffusion Policy API
-    def compute_loss(self, batch):
-        obs = batch['obs']
-        nactions = self.normalizer(batch['actions'])
-        return self(obs, nactions)
-    
-    def set_normalizer(self, normalizer: LinearNormalizer):
-        self.normalizer.load_state_dict(normalizer.state_dict())
 
     def configure_optimizers(self):
         return self.optimizer
@@ -79,27 +69,46 @@ class ACTPolicy(BaseImagePolicy):
 
         return binaries
         
-    def serialize(self):
+    def serialize(self):    
         return self.state_dict()
 
     def deserialize(self, model_dict):
         return self.load_state_dict(model_dict)
+    
+    # DIFFUSION POLICY API ########################################################
+    def predict_action(self, obs_dict: Dict[str, torch.Tensor], fixed_action_prefix=None) -> Dict[str, torch.Tensor]: # fixed_action_prefix only for API compatibility
+        action = self(obs_dict, actions=None)
+        return {"action": action, "action_pred": action} # means action and prediction horizon must be equal
+        
+    def compute_loss(self, batch):
+        obs = batch['obs']
+        nactions = self.normalizer(batch['actions'])
+        return self(obs, nactions)
+    
+    def set_normalizer(self, normalizer: LinearNormalizer, dummy=False):
+        if dummy:
+            self.normalizer = DummyNormalizer()
+        else:
+            self.normalizer.load_state_dict(normalizer.state_dict())
 
 
-def build_ACT_model_and_optimizer(args):
+def build_ACT_model_and_optimizer(args: OmegaConf):
 
-    model = build_ACT_model(args)
+    opt_args = args.optimizer
+    policy_args = args.policy
+
+    model = build_ACT_model(policy_args)
     model.cuda()
 
     param_dicts = [
         {"params": [p for n, p in model.named_parameters() if "backbone" not in n and p.requires_grad]},
         {
             "params": [p for n, p in model.named_parameters() if "backbone" in n and p.requires_grad],
-            "lr": args.lr_backbone,
+            "lr": opt_args.lr_backbone,
         },
     ]
-    optimizer = torch.optim.AdamW(param_dicts, lr=args.lr,
-                                  weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(param_dicts, lr=opt_args.lr,
+                                  weight_decay=opt_args.weight_decay)
 
     return model, optimizer
 

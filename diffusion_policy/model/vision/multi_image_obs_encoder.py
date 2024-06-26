@@ -6,6 +6,7 @@ import torchvision
 from diffusion_policy.model.vision.crop_randomizer import CropRandomizer
 from diffusion_policy.model.common.module_attr_mixin import ModuleAttrMixin
 from diffusion_policy.common.pytorch_util import dict_apply, replace_submodules
+from einops import rearrange
 
 
 class MultiImageObsEncoder(ModuleAttrMixin):
@@ -21,7 +22,8 @@ class MultiImageObsEncoder(ModuleAttrMixin):
             share_rgb_model: bool=False,
             # renormalize rgb input with imagenet normalization
             # assuming input in [0,1]
-            imagenet_norm: bool=False
+            imagenet_norm: bool=False,
+            pretrained = False, # not actually used, need this to maintain API with Timm
         ):
         """
         Assumes rgb input: B,C,H,W
@@ -159,9 +161,12 @@ class MultiImageObsEncoder(ModuleAttrMixin):
                     batch_size = img.shape[0]
                 else:
                     assert batch_size == img.shape[0]
-                assert img.shape[1:] == self.key_shape_map[key]
+                if len(img.shape) == 5: # (B,N,C,H,W)
+                    img = rearrange(img, 'b n c h w -> (b n) c h w')
+                assert img.shape[1:] == self.key_shape_map[key], f"img.shape: {img.shape}, key_shape_map: {self.key_shape_map[key]}, key: {key}"
                 img = self.key_transform_map[key](img)
                 feature = self.key_model_map[key](img)
+                feature = rearrange(feature, '(b n) d -> b (n d)', b=batch_size)
                 features.append(feature)
         
         # process lowdim input
@@ -171,7 +176,9 @@ class MultiImageObsEncoder(ModuleAttrMixin):
                 batch_size = data.shape[0]
             else:
                 assert batch_size == data.shape[0]
-            assert data.shape[1:] == self.key_shape_map[key]
+            if len(data.shape) == 3: # (B,N,D)
+                data = rearrange(data, 'b n d -> b (n d)')
+            # assert data.shape[1:] == self.key_shape_map[key], f"data.shape: {data.shape}, key_shape_map: {self.key_shape_map[key]}, key: {key}"
             features.append(data)
         
         # concatenate all features

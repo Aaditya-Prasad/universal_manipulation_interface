@@ -1,0 +1,41 @@
+
+
+
+policy:
+  action_dim: 13
+
+ # backbone
+  backbone: resnet18
+  frozen_backbone: False
+  dilation: False
+  position_embedding: sine # Options: none, sine, learned
+  camera_names: # for now, only the number of names matters, but they need to be concatenated in a consistent order
+    - base_image
+    - wrist_image
+  
+  # tranformer params
+  no_encoder: False
+  enc_layers: 4
+  dec_layers: 7
+  dim_feedforward: 2048
+  hidden_dim: 256
+  dropout: 0.1
+  nheads: 8
+  num_queries: 400
+  pre_norm: False
+
+  # vqvae params
+  vq: False
+  vq_class: 12 # int
+  vq_dim: 64
+
+
+  masks: False
+
+training:
+  kl_weight: 0.1
+
+optimizer:
+  lr: 3.0e-4
+  lr_backbone: 3.0e-5
+  weight_decay: 1.0e-6

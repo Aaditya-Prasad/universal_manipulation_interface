@@ -8,6 +8,28 @@ import torch.nn as nn
 from diffusion_policy.common.pytorch_util import dict_apply
 from diffusion_policy.model.common.dict_of_tensor_mixin import DictOfTensorMixin
 
+class DummyNormalizer(DictOfTensorMixin):    
+    def normalize(self, x: Union[Dict, torch.Tensor, np.ndarray]) -> torch.Tensor:
+        return x
+    
+    def unnormalize(self, x: Union[Dict, torch.Tensor, np.ndarray]) -> torch.Tensor:
+        return x
+
+    def get_input_stats(self) -> Dict:
+        return dict()
+
+    def get_output_stats(self) -> Dict:
+        return dict()
+
+    def __call__(self, x: Union[Dict, torch.Tensor, np.ndarray]) -> torch.Tensor:
+        return self.normalize(x)
+
+    def __getitem__(self, key: str):
+        return self
+
+    def __setitem__(self, key: str , value: 'DummyNormalizer'):
+        pass
+
 
 class LinearNormalizer(DictOfTensorMixin):
     avaliable_modes = ['limits', 'gaussian']
