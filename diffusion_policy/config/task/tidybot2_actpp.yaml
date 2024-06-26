@@ -1,0 +1,156 @@
+name: tidybot2
+
+camera_obs_latency: 0
+robot_obs_latency: 0
+gripper_obs_latency: 0
+dataset_frequeny: 0 #59.94
+obs_down_sample_steps: 1 # 3, 1
+
+# This is for ACT, which does not take obs history or prediction != action horizon
+low_dim_obs_horizon: 1
+img_obs_horizon: 1
+action_horizon: 8
+ignore_proprioception: False
+
+dataset_shape_meta: &dsm
+  # acceptable types: rgb, low_dim
+  obs:
+    base_image:
+      shape: [3, 84, 84]
+      horizon: ${task.img_obs_horizon} # int
+      latency_steps: 0 # float
+      down_sample_steps: ${task.obs_down_sample_steps} # int
+      type: rgb
+      ignore_by_policy: False
+    wrist_image:
+      shape: [3, 84, 84]
+      horizon: ${task.img_obs_horizon} # int
+      latency_steps: 0 # float
+      down_sample_steps: ${task.obs_down_sample_steps} # int
+      type: rgb
+      ignore_by_policy: False
+    base_pose:
+      shape: [3]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      ignore_by_policy: ${task.ignore_proprioception}
+    arm_pos:
+      shape: [3]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      ignore_by_policy: ${task.ignore_proprioception}
+    arm_rot:
+      raw_shape: [3]
+      shape: [6]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      rotation_rep: rotation_6d
+      ignore_by_policy: ${task.ignore_proprioception}
+    gripper_pos:
+      shape: [1]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.gripper_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      ignore_by_policy: ${task.ignore_proprioception}
+    arm_demo_start_pos:
+      shape: [6]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      ignore_by_policy: ${task.ignore_proprioception}
+  action: 
+    shape: [13] # 3 base, 3 arm, 6 arm rot, 1 gripper
+    horizon: ${task.action_horizon}
+    latency_steps: 0 # float
+    down_sample_steps: ${task.obs_down_sample_steps} # int
+    rotation_rep: rotation_6d
+
+shape_meta: &shape_meta
+  # acceptable types: rgb, low_dim
+  obs:
+    base_image:
+      shape: [3, 84, 84]
+      horizon: ${task.img_obs_horizon} # int
+      latency_steps: 0 # float
+      down_sample_steps: ${task.obs_down_sample_steps} # int
+      type: rgb
+      ignore_by_policy: False
+    wrist_image:
+      shape: [3, 84, 84]
+      horizon: ${task.img_obs_horizon} # int
+      latency_steps: 0 # float
+      down_sample_steps: ${task.obs_down_sample_steps} # int
+      type: rgb
+      ignore_by_policy: False
+    base_pose:
+      shape: [3]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      ignore_by_policy: ${task.ignore_proprioception}
+    arm_pos:
+      shape: [3]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      ignore_by_policy: ${task.ignore_proprioception}
+    arm_rot:
+      raw_shape: [3]
+      shape: [6]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      rotation_rep: rotation_6d
+      ignore_by_policy: ${task.ignore_proprioception}
+    gripper_pos:
+      shape: [1]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.gripper_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      ignore_by_policy: ${task.ignore_proprioception}
+    arm_rot_wrt_start:
+      raw_shape: [3]
+      shape: [6]
+      horizon: ${task.low_dim_obs_horizon} # int
+      latency_steps: ${eval:'(${task.camera_obs_latency} - ${task.robot_obs_latency}) * ${task.dataset_frequeny}'} # float
+      down_sample_steps: ${task.obs_down_sample_steps} # float
+      type: low_dim
+      ignore_by_policy: ${task.ignore_proprioception}
+  action: 
+    shape: [13] # 3 base, 3 arm, 6 arm rot, 1 gripper
+    horizon: ${task.action_horizon}
+    latency_steps: 0 # float
+    down_sample_steps: ${task.obs_down_sample_steps} # int
+    rotation_rep: rotation_6d
+
+task_name: &task_name tidybot2
+dataset_path: data/aaditya/data/demo_rot.hdf5
+pose_repr: &pose_repr
+  obs_pose_repr: relative # abs or rel
+  action_pose_repr: relative # abs or rel or delta
+
+dataset:
+  _target_: diffusion_policy.dataset.umi_dataset.UmiDataset
+  shape_meta: *shape_meta
+  dataset_shape_meta: *dsm
+  dataset_path: ${task.dataset_path}
+  cache_dir: null
+  pose_repr: *pose_repr
+  action_padding: False
+  temporally_independent_normalization: False
+  repeat_frame_prob: 0.0
+  max_duration: null
+  seed: 42
+  val_ratio: 0.05

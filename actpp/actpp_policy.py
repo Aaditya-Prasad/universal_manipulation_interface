@@ -21,13 +21,18 @@ class ACTPolicy(BaseImagePolicy):
         self.optimizer = optimizer
         self.kl_weight = args.training.kl_weight
         self.vq = args.policy.vq
+        if self.vq:
+            raise NotImplementedError("VQ not implemented")
+    
         self.normalizer = LinearNormalizer()
         print(f'KL Weight {self.kl_weight}')
 
     def __call__(self, obs, actions=None, is_pad=None, vq_sample=None):
-
+        if vq_sample is not None:
+            raise NotImplementedError("VQ sampling not implemented")
+        
         env_state = None
-        nobs = self.normalizer(obs)
+        nobs = self.normalizer.normalize(obs)
 
         low_dim_obs = torch.cat((nobs['base_pose'], nobs['arm_pos'], nobs['arm_rot'], nobs['arm_rot_wrt_start'], nobs['gripper_pos']), dim=-1) # b 19
         if len(low_dim_obs.shape) == 3:
@@ -36,7 +41,7 @@ class ACTPolicy(BaseImagePolicy):
         
         if actions is not None: # training time
             actions = actions[:, :self.model.num_queries]
-            is_pad = is_pad[:, :self.model.num_queries]
+            # is_pad = is_pad[:, :self.model.num_queries] # I believe we no longer need this because UMI dataset handles chunking differently
 
             loss_dict = dict()
             a_hat, is_pad_hat, (mu, logvar), probs, binaries = self.model(low_dim_obs, images, env_state, actions, is_pad, vq_sample)
@@ -46,9 +51,8 @@ class ACTPolicy(BaseImagePolicy):
                 total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
             if self.vq:
                 loss_dict['vq_discrepancy'] = F.l1_loss(probs, binaries, reduction='mean')
-            all_l1 = F.l1_loss(actions, a_hat, reduction='none')
-            l1 = (all_l1 * ~is_pad.unsqueeze(-1)).mean()
-            loss_dict['l1'] = l1
+            l1 = F.l1_loss(actions, a_hat, reduction='none')
+            loss_dict['l1'] = l1.mean()
             loss_dict['kl'] = total_kld[0]
             loss_dict['loss'] = loss_dict['l1'] + loss_dict['kl'] * self.kl_weight
             return loss_dict
@@ -78,11 +82,12 @@ class ACTPolicy(BaseImagePolicy):
     # DIFFUSION POLICY API ########################################################
     def predict_action(self, obs_dict: Dict[str, torch.Tensor], fixed_action_prefix=None) -> Dict[str, torch.Tensor]: # fixed_action_prefix only for API compatibility
         action = self(obs_dict, actions=None)
+        action = self.normalizer['action'].unnormalize(action)
         return {"action": action, "action_pred": action} # means action and prediction horizon must be equal
         
     def compute_loss(self, batch):
         obs = batch['obs']
-        nactions = self.normalizer(batch['actions'])
+        nactions = self.normalizer['action'].normalize(batch['action'])
         return self(obs, nactions)
     
     def set_normalizer(self, normalizer: LinearNormalizer, dummy=False):
@@ -108,7 +113,7 @@ def build_ACT_model_and_optimizer(args: OmegaConf):
         },
     ]
     optimizer = torch.optim.AdamW(param_dicts, lr=opt_args.lr,
-                                  weight_decay=opt_args.weight_decay)
+                                  weight_decay=opt_args.weight_decay, betas = opt_args.betas, eps = opt_args.eps)
 
     return model, optimizer
 

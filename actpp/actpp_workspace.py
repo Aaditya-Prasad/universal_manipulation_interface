@@ -26,7 +26,6 @@ from diffusion_policy.env_runner.base_image_runner import BaseImageRunner
 from diffusion_policy.common.checkpoint_util import TopKCheckpointManager
 from diffusion_policy.common.json_logger import JsonLogger
 from diffusion_policy.common.pytorch_util import dict_apply, optimizer_to
-from diffusion_policy.model.diffusion.ema_model import EMAModel
 from diffusion_policy.model.common.lr_scheduler import get_scheduler
 from tidybot2.utils import load_normalizer
 from accelerate import Accelerator
@@ -52,19 +51,6 @@ class ACTWorkspace(BaseWorkspace):
         self.model: ACTPolicy = ACTPolicy(cfg)
         self.optimizer = self.model.configure_optimizers()
 
-        obs_encorder_lr = cfg.optimizer.lr
-        if cfg.policy.obs_encoder.pretrained:
-            obs_encorder_lr *= 0.1
-            print('==> reduce pretrained obs_encorder\'s lr')
-        obs_encorder_params = list()
-        for param in self.model.obs_encoder.parameters():
-            if param.requires_grad:
-                obs_encorder_params.append(param)
-        print(f'obs_encorder params: {len(obs_encorder_params)}')
-        param_groups = [
-            {'params': self.model.model.parameters()},
-            {'params': obs_encorder_params, 'lr': obs_encorder_lr}
-        ]
 
         # configure training state
         self.global_step = 0
@@ -168,12 +154,6 @@ class ACTWorkspace(BaseWorkspace):
             **cfg.checkpoint.topk
         )
 
-        # device transfer
-        # device = torch.device(cfg.training.device)
-        # self.model.to(device)
-        # if self.ema_model is not None:
-        #     self.ema_model.to(device)
-        # optimizer_to(self.optimizer, device)
 
         # accelerator
         train_dataloader, val_dataloader, self.model, self.optimizer, lr_scheduler = accelerator.prepare(
@@ -201,10 +181,6 @@ class ACTWorkspace(BaseWorkspace):
 
                 step_log = dict()
                 if not cfg.training.inference_mode:
-                    # ========= train for this epoch ==========
-                    if cfg.training.freeze_encoder:
-                        self.model.obs_encoder.eval()
-                        self.model.obs_encoder.requires_grad_(False)
 
                     train_losses = list()
                     with tqdm.tqdm(train_dataloader, desc=f"Training epoch {self.epoch}", 
@@ -217,7 +193,9 @@ class ACTWorkspace(BaseWorkspace):
                             train_sampling_batch = batch
 
                             # compute loss
-                            raw_loss = self.model(batch)
+                            # print("BATCH", batch.keys())
+                            loss_dict = self.model.compute_loss(batch)
+                            raw_loss = loss_dict['loss']
                             loss = raw_loss / cfg.training.gradient_accumulate_every
                             loss.backward()
 
@@ -226,10 +204,7 @@ class ACTWorkspace(BaseWorkspace):
                                 self.optimizer.step()
                                 self.optimizer.zero_grad()
                                 lr_scheduler.step()
-                            
-                            # update ema
-                            if cfg.training.use_ema:
-                                ema.step(accelerator.unwrap_model(self.model))
+
 
                             # logging
                             raw_loss_cpu = raw_loss.item()
@@ -237,6 +212,8 @@ class ACTWorkspace(BaseWorkspace):
                             train_losses.append(raw_loss_cpu)
                             step_log = {
                                 'train_loss': raw_loss_cpu,
+                                'l1 loss': loss_dict['l1'].item(),
+                                'kl loss': loss_dict['kl'].item(),
                                 'global_step': self.global_step,
                                 'epoch': self.epoch,
                                 'lr': lr_scheduler.get_last_lr()[0]
@@ -260,8 +237,7 @@ class ACTWorkspace(BaseWorkspace):
 
                 # ========= eval for this epoch ==========
                 policy = accelerator.unwrap_model(self.model)
-                if cfg.training.use_ema:
-                    policy = self.ema_model
+
                 policy.eval()
 
                 # run rollout
@@ -360,7 +336,7 @@ class ACTWorkspace(BaseWorkspace):
     config_path=str(pathlib.Path(__file__).parent.parent.joinpath("config")), 
     config_name=pathlib.Path(__file__).stem)
 def main(cfg):
-    workspace = TrainDiffusionUnetImageWorkspace(cfg)
+    workspace = ACTWorkspace(cfg)
     workspace.run()
 
 if __name__ == "__main__":

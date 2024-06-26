@@ -13,7 +13,7 @@ On the left is the reference file in mb/ which come largely from Consistency Pol
 
 Note that we have 
 - mb_diffusion_hybrid_workspace which uses the original robomimic obs encoder (don't use this)
-- train_unet_image_tidybot2.yaml, which uses the multi image obs encoder, which works with general resolution
+- train_unet_tidybot2.yaml, which uses the multi image obs encoder, which works with general resolution
 - train_unet_timm_tidybot2.yaml, which uses the timm obs encoder, which works with 224x224 images but is probably more powerful
 
 ### Keys:
