@@ -19,7 +19,7 @@ policy:
 
   noise_scheduler:
     _target_: diffusers.DDIMScheduler
-    num_train_timesteps: 50
+    num_train_timesteps: 100
     beta_start: 0.0001
     beta_end: 0.02
     # beta_schedule is important
