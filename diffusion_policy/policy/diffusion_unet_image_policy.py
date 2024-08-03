@@ -93,7 +93,6 @@ class DiffusionUnetImagePolicy(BaseImagePolicy):
             # keyword arguments to scheduler.step
             **kwargs
             ):
-        print(kwargs)
         model = self.model
         scheduler = self.noise_scheduler
 
